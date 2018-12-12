@@ -1,0 +1,378 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Engineers: EFE ACER - TALHA MURATHAN GOKTAS
+// Module Name: Main
+// Project Name: Lab5
+//////////////////////////////////////////////////////////////////////////////////
+
+
+module Main(input logic button1, button2, clock,
+            output logic [3:0] AN,
+		    output logic [6:0] C,
+		    output logic DP, memWrite);
+
+logic[31:0] writeData, dataAdr, PC, instr;
+logic clockMIPS, resetMIPS;
+
+pulse_controller pulseController1(clock, button1, 0, clockMIPS);
+pulse_controller pulseController2(clock, button2, 0, resetMIPS);
+TopExtended MIPS(clockMIPS, resetMIPS, writeData, dataAdr, PC, instr, memWrite); 
+display_controller displayController(clock, button2, 4'b1111, writeData[7:4], writeData[3:0], dataAdr[7:4], dataAdr[3:0], AN, C, DP);
+
+endmodule
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Written by David_Harris@hmc.edu
+// Top level system including MIPS and memories
+
+module TopExtended(input   logic 	 clk, reset,            
+	     output  logic[31:0] writedata, dataadr, pc, instr,            
+	     output  logic       memwrite);  
+
+   logic [31:0] readdata;    
+
+   // instantiate processor and memories  
+   mips mips (clk, reset, pc, instr, memwrite, dataadr, writedata, readdata);  
+   imem imem (pc[7:2], instr);  
+   dmem dmem (clk, memwrite, dataadr, writedata, readdata);
+
+endmodule
+
+
+
+// External data memory used by MIPS single-cycle processor
+
+module dmem (input  logic        clk, we,
+             input  logic[31:0]  a, wd,
+             output logic[31:0]  rd);
+
+   logic  [31:0] RAM[63:0];
+  
+   assign rd = RAM[a[31:2]];    // word-aligned  read (for lw)
+
+   always_ff @(posedge clk)
+     if (we)
+       RAM[a[31:2]] <= wd;      // word-aligned write (for sw)
+
+endmodule
+
+
+
+// single-cycle MIPS processor, with controller and datapath
+
+module mips (input  logic        clk, reset,
+             output logic[31:0]  pc,
+             input  logic[31:0]  instr,
+             output logic        memwrite,
+             output logic[31:0]  aluout, writedata,
+             input  logic[31:0]  readdata);
+
+  logic        memtoreg, pcsrc, zero, alusrc, regdst, regwrite, jump;
+  logic [2:0]  alucontrol;
+
+  controller c (instr[31:26], instr[5:0], zero, memtoreg, memwrite, pcsrc,
+                        alusrc, regdst, regwrite, jump, alucontrol);
+
+  datapath dp (clk, reset, memtoreg, pcsrc, alusrc, regdst, regwrite, jump,
+                          alucontrol, zero, pc, instr, aluout, writedata, readdata);
+
+endmodule
+module controller(input  logic[5:0] op, funct,
+                  input  logic     zero,
+                  output logic     memtoreg, memwrite,
+                  output logic     pcsrc, alusrc,
+                  output logic     regdst, regwrite,
+                  output logic     jump,
+                  output logic[2:0] alucontrol);
+
+   logic [1:0] aluop;
+   logic       branch;
+
+   maindec md (op, memtoreg, memwrite, branch, alusrc, regdst, regwrite, 
+		 jump, aluop);
+
+   aludec  ad (funct, aluop, alucontrol);
+
+   assign pcsrc = branch & zero;
+
+endmodule
+
+module maindec(input logic[5:0] opcode, 
+	               output logic memToReg, memWrite, branch, ALUSrc, regDst, regWrite, jump,
+	               output logic[1:0] ALUOp);
+	            
+logic [8:0] controls;
+
+assign {regWrite, regDst, ALUSrc, branch, memWrite, memToReg, ALUOp, jump} = controls;
+
+always_comb
+    case(opcode)
+        6'b000000: controls <= 9'b110000100; //R-type: 110000100
+        6'b100011: controls <= 9'b101001000; //lw: 101001000
+        6'b101011: controls <= 9'b0x101x000; //sw: 0x101x000
+        6'b000100: controls <= 9'b0x010x010; //beq: 0x010x010
+        6'b001000: controls <= 9'b101000000; //addi: 101000000
+        6'b000010: controls <= 9'b0xxx0xxx1; //j: 0xxx0xxx1
+        6'b001010: controls <= 9'b101000010; //subi: 101000010 (opcode: 001010) //CHANGE
+        default: controls <= 9'bxxxxxxxxx; // illegal opcode
+    endcase
+    
+endmodule
+
+module aludec (input    logic[5:0] funct,
+               input    logic[1:0] aluop,
+               output   logic[2:0] alucontrol);
+  always_comb
+    case(aluop)
+      2'b00: alucontrol  = 3'b010;  // add  (for lw/sw/addi)
+      2'b01: alucontrol  = 3'b110;  // sub   (for beq)
+      default: case(funct)          // R-TYPE instructions
+          6'b100000: alucontrol  = 3'b010; // ADD
+          6'b100010: alucontrol  = 3'b110; // SUB
+          6'b100100: alucontrol  = 3'b000; // AND
+          6'b100101: alucontrol  = 3'b001; // OR
+          6'b101010: alucontrol  = 3'b111; // SLT
+          default:   alucontrol  = 3'bxxx; // ???
+        endcase
+    endcase
+endmodule
+
+module datapath (input  logic clk, reset, memtoreg, pcsrc, alusrc, regdst,
+                 input  logic regwrite, jump, 
+		 input  logic[2:0]  alucontrol, 
+                 output logic zero, 
+		 output logic[31:0] pc, 
+	         input  logic[31:0] instr,
+                 output logic[31:0] aluout, writedata, 
+	         input  logic[31:0] readdata);
+
+  logic [4:0]  writereg;
+  logic [31:0] pcnext, pcnextbr, pcplus4, pcbranch;
+  logic [31:0] signimm, signimmsh, srca, srcb, result;
+ 
+  // next PC logic
+  flopr #(32) pcreg(clk, reset, pcnext, pc);
+  adder       pcadd1(pc, 32'b100, pcplus4);
+  sl2         immsh(signimm, signimmsh);
+  adder       pcadd2(pcplus4, signimmsh, pcbranch);
+  mux2 #(32)  pcbrmux(pcplus4, pcbranch, pcsrc,
+                      pcnextbr);
+  mux2 #(32)  pcmux(pcnextbr, {pcplus4[31:28], 
+                    instr[25:0], 2'b00}, jump, pcnext);
+
+// register file logic
+   regfile     rf (clk, regwrite, instr[25:21], instr[20:16], writereg,
+                   result, srca, writedata);
+
+   mux2 #(5)    wrmux (instr[20:16], instr[15:11], regdst, writereg);
+   mux2 #(32)  resmux (aluout, readdata, memtoreg, result);
+   signext         se (instr[15:0], signimm);
+
+  // ALU logic
+   mux2 #(32)  srcbmux (writedata, signimm, alusrc, srcb);
+   alu         alu (srca, srcb, alucontrol, aluout, zero);
+
+endmodule
+
+
+module regfile (input    logic clk, we3, 
+                input    logic[4:0]  ra1, ra2, wa3, 
+                input    logic[31:0] wd3, 
+                output   logic[31:0] rd1, rd2);
+
+  logic [31:0] rf [31:0];
+
+  // three ported register file: read two ports combinationally
+  // write third port on rising edge of clock. Register0 hardwired to 0.
+
+  always_ff@(posedge clk)
+     if (we3) 
+         rf [wa3] <= wd3;	
+
+  assign rd1 = (ra1 != 0) ? rf [ra1] : 0;
+  assign rd2 = (ra2 != 0) ? rf[ ra2] : 0;
+
+endmodule
+
+
+module adder (input  logic[31:0] a, b,
+              output logic[31:0] y);
+     
+     assign y = a + b;
+endmodule
+
+module sl2 (input  logic[31:0] a,
+            output logic[31:0] y);
+     
+     assign y = {a[29:0], 2'b00}; // shifts left by 2
+endmodule
+
+module signext (input  logic[15:0] a,
+                output logic[31:0] y);
+              
+  assign y = {{16{a[15]}}, a};    // sign-extends 16-bit a
+endmodule
+
+// parameterized register
+module flopr #(parameter WIDTH = 8)
+              (input logic clk, reset, 
+	       input logic[WIDTH-1:0] d, 
+               output logic[WIDTH-1:0] q);
+
+  always_ff@(posedge clk, posedge reset)
+    if (reset) q <= 0; 
+    else       q <= d;
+endmodule
+
+
+// paramaterized 2-to-1 MUX
+module mux2 #(parameter WIDTH = 8)
+             (input  logic[WIDTH-1:0] d0, d1,  
+              input  logic s, 
+              output logic[WIDTH-1:0] y);
+  
+   assign y = s ? d1 : d0; 
+endmodule
+
+module alu(input logic[31:0] srcA, srcB, 
+           input logic[2:0] ALUControl, 
+           output logic[31:0] ALUResult,
+           output logic zero);
+  
+assign zero = ALUResult == 0;             
+
+always_comb           
+    case (ALUControl)
+        3'b000: ALUResult = srcA & srcB; //and 
+        3'b001: ALUResult = srcA | srcB; //or
+        3'b010: ALUResult = srcA + srcB; //add
+        3'b110: ALUResult = srcA - srcB; //subtract
+        3'b111: ALUResult = srcA < srcB; //set less than
+        default: ALUResult = {32{1'bx}};
+    endcase
+
+endmodule
+
+// External instruction memory used by MIPS single-cycle
+// processor. It models instruction memory as a stored-program 
+// ROM, with address as input, and instruction as output
+
+
+module imem ( input logic [5:0] addr, output logic [31:0] instr);
+
+// imem is modeled as a lookup table, a stored-program byte-addressable ROM
+	always_comb
+	   case ({addr,2'b00})		   	// word-aligned fetch
+//		address		instruction
+//		-------		-----------
+		8'h00: instr = 32'h20020005;  	// disassemble, by hand 
+		8'h04: instr = 32'h2003000c;  	// or with a program,
+		8'h08: instr = 32'h2067fff7;  	// to find out what
+		8'h0c: instr = 32'h00e22025;  	// this program does!
+		8'h10: instr = 32'h00642824;
+		8'h14: instr = 32'h00a42820;
+		8'h18: instr = 32'h10a7000a;
+		8'h1c: instr = 32'h0064202a;
+		8'h20: instr = 32'h10800001;
+		8'h24: instr = 32'h20050000;
+		8'h28: instr = 32'h00e2202a;
+		8'h2c: instr = 32'h00853820;
+		8'h30: instr = 32'h00e23822;
+		8'h34: instr = 32'hac670044;
+		8'h38: instr = 32'h8c020050;
+		8'h3c: instr = 32'h08000011;
+		8'h40: instr = 32'h20020001;
+		8'h44: instr = 32'hac020054;
+		8'h48: instr = 32'h20000000;
+		8'h4c: instr = 32'h20020005;
+        8'h50: instr = 32'h28420005;
+		8'h54: instr = 32'h08000012;	// j 48, so it will loop here
+	     default:  instr = {32{1'bx}};	// unknown address
+	   endcase
+endmodule
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Engineers: EFE ACER - TALHA MURATHAN GOKTAS
+// Module Name: TestbenchTop
+// Description: Testbench for Top
+//////////////////////////////////////////////////////////////////////////////////
+
+module TestbenchTop();
+
+logic clk, reset, memWrite;
+logic[31:0] writeData, dataAdr, pc, instr;
+
+TopExtended unitUnderTest(clk, reset, writeData, dataAdr, pc, instr, memWrite);
+
+initial 
+    begin
+        clk = 0;
+        reset = 1; 
+        #20ns; reset = 0;
+    end
+always
+    begin
+        #10; clk = ~clk; 
+    end
+    
+endmodule
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+## This file is a general .xdc for the Basys3 rev B board
+## To use it in a project:
+## - uncomment the lines corresponding to used pins
+## - rename the used ports (in each line, after get_ports) according to the top level signal names in the project
+
+# Clock signal
+set_property PACKAGE_PIN W5 [get_ports clock]							
+	set_property IOSTANDARD LVCMOS33 [get_ports clock]
+	create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports clock]
+ 
+# LEDs
+set_property PACKAGE_PIN U16 [get_ports {memWrite}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {memWrite}]
+	
+#7 segment display
+set_property PACKAGE_PIN W7 [get_ports {C[6]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {C[6]}]
+set_property PACKAGE_PIN W6 [get_ports {C[5]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {C[5]}]
+set_property PACKAGE_PIN U8 [get_ports {C[4]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {C[4]}]
+set_property PACKAGE_PIN V8 [get_ports {C[3]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {C[3]}]
+set_property PACKAGE_PIN U5 [get_ports {C[2]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {C[2]}]
+set_property PACKAGE_PIN V5 [get_ports {C[1]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {C[1]}]
+set_property PACKAGE_PIN U7 [get_ports {C[0]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {C[0]}]
+
+set_property PACKAGE_PIN V7 [get_ports DP]							
+	set_property IOSTANDARD LVCMOS33 [get_ports DP]
+
+set_property PACKAGE_PIN U2 [get_ports {AN[0]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {AN[0]}]
+set_property PACKAGE_PIN U4 [get_ports {AN[1]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {AN[1]}]
+set_property PACKAGE_PIN V4 [get_ports {AN[2]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {AN[2]}]
+set_property PACKAGE_PIN W4 [get_ports {AN[3]}]					
+	set_property IOSTANDARD LVCMOS33 [get_ports {AN[3]}]
+
+
+##Buttons
+set_property PACKAGE_PIN W19 [get_ports button1]						
+	set_property IOSTANDARD LVCMOS33 [get_ports button1]
+set_property PACKAGE_PIN T17 [get_ports button2]						
+	set_property IOSTANDARD LVCMOS33 [get_ports button2]
+ 
+
+

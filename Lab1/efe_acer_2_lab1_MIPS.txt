@@ -1,0 +1,807 @@
+#Preliminary Work - Question 1 - EFE ACER
+#Initializes an array of a specified size, reads the items from the user, prints the
+#array, reverses the array contents and prints the array again. 
+
+	.text
+	.globl	__start
+__start:
+	#Printing an intro message 
+	la $a0, intro
+	li $v0, 4
+	syscall
+	#Printing a prompt to read arraySize
+	la $a0, prompt1
+	li $v0, 4
+	syscall
+	#Reading the value of arraySize
+	li $v0, 5
+	syscall
+	sw $v0, arraySize
+	#Calling the readItems function
+	jal readItems
+	#Calling the printItems function
+	jal printItems
+	#Calling the reverseArrayContents function and printing the array again
+	la $a0, 0($t0) #Passing the address of $t0 as an argument for reverseArrayContents 
+	jal reverseArrayContents
+	la $a0, result2 #printing a message to inform the user that the contents are reversed
+	li $v0, 4
+	syscall
+	jal printItems
+	#Stopping the execution
+	li $v0, 10	
+	syscall
+
+#Subprogram to read arraySize items to the array 
+readItems: 
+	la $t0, array #$t0 points to the base address of the array
+	lw $t1, arraySize #$t1 is set to arraySize (counter for the repeat structure)
+	la $a0, prompt2 #printing a prompt to read items one by one
+	li $v0, 4
+	syscall
+	readItem:
+		li $v0, 5 #reading a single item to the current indexed position
+		syscall
+		sw $v0, 0($t0)
+		addi $t0, $t0, 4 #increments the pointer to the next address
+		subi $t1, $t1, 1 #decrementing the counter 
+		bgt $t1, $zero, readItem #repeat until $t1(counter) > 0
+	jr $ra #returning to the main program 
+
+#Subprogram to print array items
+printItems: 
+	la $t0, array #$t0 points to the base address of the array
+	lw $t1, arraySize #$t1 is set to arraySize (counter for the repeat structure)
+	la $a0, result1 #printing a message to inform the user 
+	li $v0, 4
+	syscall
+	printItem:
+		beq $t1, 1, printWithoutSeparator #if counter == 1 skip if block
+		lw $a0, 0($t0) #printing the current indexed item
+		li $v0, 1
+		syscall
+		la $a0, separator #printing the separator after the item (if block)
+		li $v0, 4
+		syscall
+		j continue #skipping the else block
+		printWithoutSeparator: #printing the item without a separator (else block)
+			lw $a0, 0($t0) #printing the current indexed item
+			li $v0, 1
+			syscall
+		continue:
+			addi $t0, $t0, 4 #increments the pointer to the next address
+			subi $t1, $t1, 1 #decrementing the counter 
+			bgt $t1, $zero, printItem #repeat until $t1(counter) > 0
+	jr $ra #returning to the main program 
+	
+#Subprogram to reverse array contents
+reverseArrayContents: 
+	subi $t0, $a0, 4 #$t0 points to the last item's address in the array
+	la $t1, array #$t1 points to the base address of the array
+	reverseItems:
+		#Swapping two items pointed by $t0 and $t1
+		lw $t2, 0($t1) #base adress to $t2
+		lw $t3, 0($t0) #last adress to $t3
+		sw $t2, 0($t0) #word in $t2 to $t0
+		sw $t3, 0($t1) #word in $t3 to $t1
+		#Computing the difference between the pointers and modifying them
+		sub $t2, $t0, $t1 
+		subi $t0, $t0, 4
+		addi $t1, $t1, 4
+		bge $t2, 4, reverseItems #repeat until $t0 - $t1 < 4
+	jr $ra #returning to the main program 
+
+#The data segment
+	      .data
+array:	      .space    80 #80/4 = 20 words (a word is 4 bytes)
+arraySize:    .word     0
+intro:	      .asciiz   "The program initializes, reverses and prints an array created by the user.\n"
+prompt1:      .asciiz   "Please enter the array size (must be between 1 and 20):\n"
+prompt2:      .asciiz   "Please enter the items one by one:\n"
+result1:      .asciiz   "The array contents:\n"
+result2:      .asciiz   "\nArray contents are reversed.\n"
+separator:    .asciiz   ", "
+
+###########################################################################################
+
+#Preliminary Work - Question 2 - EFE ACER
+#Evaluates the expression x = (c - d) % 2 without using div instruction
+
+	.text
+	.globl	__start
+__start:
+	#Printing an intro message 
+	la $a0, intro
+	li $v0, 4
+	syscall
+	#Printing a prompt to read c
+	la $a0, prompt1
+	li $v0, 4
+	syscall
+	#Reading the value of c
+	li $v0, 5
+	syscall
+	sw $v0, c
+	#Printing a prompt to read d
+	la $a0, prompt2
+	li $v0, 4
+	syscall
+	#Reading the value of d
+	li $v0, 5
+	syscall
+	sw $v0, d
+	#Calling the calculate function with arguments c and d
+	lw $a0, c
+	lw $a1, d
+	jal calculate
+	sw $v0, x
+	#Printing a message to display x
+	la $a0, result
+	li $v0, 4
+	syscall
+	#Printing the result value x
+	lw $a0, x
+	li $v0 1
+	syscall 
+	#Stopping the execution
+	li $v0, 10	
+	syscall		
+
+#Subprogram to evaluate x = (c - d) % 2 without using div 
+calculate: 
+	sub $t0, $a0, $a1
+	bge $t0, $zero, else #if (c - d) >= 0 branch to else
+	modNegative: #process to find the modulo of a negative number
+		addi $t0, $t0, 2 #repeatedly add 2 to $t0
+		blt $t0, $zero, modNegative #repeat until $t0 becomes positive
+	j return #skip the else block 
+	else: 
+		modPositive: #process to find the modulo of a positive number
+			subi $t0, $t0, 2 #repeatedly subtract 2 from $t0
+			bge $t0, 2, modPositive #repeat until $t0 < 2
+		
+	return: 
+		move $v0, $t0 #set $v0 to the remainder
+		jr $ra #returning to the main program 
+
+#The data segment
+	    .data 
+intro:	    .asciiz   "The program evaluates the expression x = (c - d) % 2.\n"
+prompt1:    .asciiz   "Please enter the value of c:\n"
+prompt2:    .asciiz   "Please enter the value of d:\n"
+result:     .asciiz   "The value of x is: "
+x:	    .word     0					
+c:          .word     0
+d:          .word     0
+
+###########################################################################################
+
+##
+## Program1.asm - prints out "hello world"
+##
+##	a0 - points to the string
+##
+
+#################################
+#					 	#
+#		text segment		#
+#						#
+#################################
+
+	.text		
+	.globl __start 
+
+__start:		# execution starts here
+	la $a0,str	# put string address into a0
+	li $v0,4	# system call to print
+	syscall	#   out a string
+
+	la $a0,serdar	# put string address into a0
+	li $v0,4	# system call to print
+	syscall	#   out a string
+	
+	li $v0,10  # system call to exit
+	syscall	#    bye bye
+
+
+#################################
+#					 	#
+#     	 data segment		#
+#						#
+#################################
+
+	.data
+str:	.asciiz "hello "
+serdar: .asciiz "Serdar\n"
+n:	.word	10
+
+##
+## end of file Program1.asm
+
+###########################################################################################
+
+##
+## Program2.asm asks user for temperature in Celsius,
+##  converts to Fahrenheit, prints the result.
+##
+##	v0 - reads in Celsius
+##	t0 - holds Fahrenheit result
+##	a0 - points to output strings
+##
+
+#################################
+#					 	#
+#		text segment		#
+#						#
+#################################
+
+	.text		
+	.globl __start	
+
+__start:
+	la $a0,prompt	# output prompt message on terminal
+	li $v0,4		# syscall 4 prints the string
+	syscall
+
+	li $v0, 5 		# syscall 5 reads an integer #li v0, 5 -> error: operand is of incorrect type
+	syscall					             #$v0 contains input number in hex after the second syscall				
+
+        mul $t0,$v0,9	# to convert,multiply by 9, #mul $t0, $t0, 9 -> $t0 is initially 0
+	div $t0,$t0,5	# divide by 5, then	    #it will be ((0 * 9) / 5) + 32 = 32 at the end regardless of the input
+	add $t0,$t0,32	# add 32
+
+	la $a0,ans1	# print string before result
+	li $v0,4
+	syscall
+
+	move $a0,$t0	# print integer result
+	li $v0,1		# using syscall 1
+	syscall
+
+	la $a0,endl	# system call to print
+	li $v0,4		# out a newline
+	syscall
+
+	li $v0,10		# system call to exit
+	syscall		#    bye bye
+
+
+#################################
+#					 	#
+#     	 data segment		#
+#						#
+#################################
+
+	.data
+prompt:	.asciiz "Enter temperature (Celsius): "
+ans1:		.asciiz "The temperature in Fahrenheit is "
+endl:		.asciiz "\n"
+
+##
+## end of file Program2.asm
+
+###########################################################################################
+
+##
+##	Program3.asm is a loop implementation
+##	of the Fibonacci function
+##        
+
+#################################
+#					 	#
+#		text segment		#
+#						#
+#################################
+
+	.text		
+.globl __start
+ 
+__start:			# execution starts here
+	li $a0,7		# to calculate fib(7)
+	jal fib		# call fib #FIX: changed 'l' in the "flb" to 'i'
+	move $a0,$v0	# print result
+	li $v0, 1
+	syscall #FIX: added a 'l' at the end
+
+	la $a0,endl		# print newline #FIX: added a 'l' to "end"
+	li $v0,4
+	syscall #FIX: added a 'l' at the end
+
+	li $v0,10 #FIX: changed 100 to 10
+	syscall #FIX: added a 'l' at the end		# bye bye
+
+#------------------------------------------------
+
+
+fib:	move $v0,$a0	# initialise last element
+	blt $a0,2,done	# fib(0)=0, fib(1)=1 #FIX: added a 'e' at the end of "don"
+
+	li $t0,0		# second last element
+	li $v0,1		# last element
+
+loop:	add $t1,$t0, $v0	# get next value #FIX: added a "$" at the beginning of "vO"
+	move $t0,$v0	# update second last
+	move $v0,$t1	# update last element
+	sub $a0,$a0,1	# decrement count
+	bgt $a0,1,loop	# exit loop when count=0 #FIX: changes 1 to 0 because we should make
+						 #n - 1 additions to find the n'th fib. number
+done:	jr $ra
+
+#################################
+#					 	#
+#     	 data segment		#
+#						#
+#################################
+
+	.data
+endl:	.asciiz "\n"
+
+##
+## end of Program3.asm
+
+###########################################################################################
+
+#Lab 1 - Part 4 - EFE ACER
+#The program evaluates the expression (a^2 - 5 * b + 7) % 4 where a and b are user inputs.
+	.text
+	.globl	__start
+__start:
+	#Printing an intro message 
+	la $a0, intro
+	li $v0, 4
+	syscall
+	#Printing a prompt to read a
+	la $a0, prompt1
+	li $v0, 4
+	syscall
+	#Reading the value of a
+	li $v0, 5
+	syscall
+	sw $v0, a
+	#Printing a prompt to read b
+	la $a0, prompt2
+	li $v0, 4
+	syscall
+	#Reading the value of b
+	li $v0, 5
+	syscall
+	sw $v0, b
+	#Calling the calculate function with arguments a and b
+	lw $a0, a
+	lw $a1, b
+	jal calculate
+	sw $v0, answer
+	#Printing a message to display the answer
+	la $a0, result
+	li $v0, 4
+	syscall
+	#Printing the answer
+	lw $a0, answer
+	li $v0 1
+	syscall 
+	#Stopping the execution
+	li $v0, 10	
+	syscall		
+
+#Subprogram to evaluate (a^2 - 5 * b + 7) % 4 without using div 
+calculate: 
+	mul $a0, $a0, $a0 #$a0 holds a^2
+	mul $a1, $a1, -5 #$a1 holds -5 * b
+	add $a0, $a0, $a1 #$a0 holds a^2 - 5 * b
+	addi $a0, $a0, 7 #$a0 holds a^2 - 5 * b - 7 now 
+	bge $a0, $zero, else #if (a^2 - 5 * b - 7) >= 0 branch to else
+	modNegative: #process to find the modulo of a negative number
+		addi $a0, $a0, 4 #repeatedly add 2 to $t0
+		blt $a0, $zero, modNegative #repeat until $t0 becomes positive
+	j return #skip the else block 
+	else: 
+		modPositive: #process to find the modulo of a positive number
+			subi $a0, $a0, 4 #repeatedly subtract 2 from $t0
+			bge $a0, 4, modPositive #repeat until $t0 < 2
+		
+	return: 
+		move $v0, $a0 #set $v0 to the remainder
+		jr $ra #returning to the main program 
+
+#The data segment
+	    .data 
+intro:	    .asciiz   "The program evaluates the expression (a^2 - 5 * b + 7) % 4.\n"
+prompt1:    .asciiz   "Please enter the value of a:\n"
+prompt2:    .asciiz   "Please enter the value of b:\n"
+result:     .asciiz   "The answer is: "
+answer:	    .word     0					
+a:          .word     0
+b:          .word     0
+
+###########################################################################################
+
+#Lab 1 - Part 5 - EFE ACER
+#The program lets the user initialize an array and perform certain operations on it, it provides
+#a simple comment based menu for the operation selection.
+
+	.text
+	.globl	__start
+__start:
+	la $a0, intro #pringting an intro message 
+	li $v0, 4
+	syscall
+	#Calling the readArraySize function to determine the array's size
+	jal readArraySize
+	#Calling the readItems function to read the values of the elements
+	jal readItems
+	#The loop based menu 
+	li $t7, 'd' #$t7 holds the quit option
+	mainLoop:
+		jal printOptions
+		li $t1, 'a'
+		li $t2, 'b'
+		li $t3, 'c'
+		li $v0, 12 #reading a character    
+ 		syscall
+ 		#Different cases regarding different menu options
+ 		caseA:
+ 			bne $v0, $t1, caseB 
+ 			jal printSumOfNumsGreaterThan
+ 			j default
+ 		caseB:
+ 			bne $v0, $t2, caseC
+ 			jal printSumOfOddAndEvenItems
+ 			j default
+ 		caseC:
+ 			bne $v0, $t3, caseD
+ 			jal printNumberOfItemsDivisibleBy
+ 			j default
+ 		caseD:	bne $v0, $t7, caseInvalid
+ 			j default
+ 		caseInvalid:
+ 			la $a0, error #pringting a prompt to read items one by one
+			li $v0, 4
+			syscall
+ 		default:
+ 			bne $v0, $t7, mainLoop
+	li $v0, 10 #Stopping the execution
+	syscall
+	
+#Subprogram to read the array size
+readArraySize: 
+	la $a0, prompt1 #pringting a prompt to read arraySize
+	li $v0, 4
+	syscall
+	li $v0, 5
+	syscall
+	sw $v0, arraySize
+	jr $ra #returning to the main program
+	
+#Subprogram to read arraySize number of itens to the array
+readItems:
+	la $a0, prompt2 #pringting a prompt to read items one by one
+	li $v0, 4
+	syscall
+	lw $t0, arraySize #t0 is set to ArraySize (counter)
+	la $t1, array #$t1 points to the base address of the array
+	readItem: 
+		li $v0, 5 #reading an item to the current indexed position
+		syscall
+		sw $v0, 0($t1)
+		subi $t0, $t0, 1 #decrementing the counter
+		addi $t1, $t1, 4 #incrementing the pointer to the next item's adress
+		bgt $t0, $zero, readItem #repeat while $t0(counter) > 0
+	jr $ra #returning to the main program  
+
+#Subprogram to find and print the summation of items in the array that are greater than a certain number
+printSumOfNumsGreaterThan:
+	la $a0, prompt3 #pringting a prompt to read the input number 
+	li $v0, 4
+	syscall
+	li $v0, 5 #reading the input number that the items will be compared to
+	syscall #$v0 currently holds the input number
+	lw $t0, arraySize #$t0 is set to ArraySize (counter)
+	la $t1, array #$t1 points to the base address of the array
+	li $t2, 0 #$t2 holds the summation
+	nextIteration1: 
+		lw $t3, 0($t1) #store the current indexed item in $t3
+		ble $t3, $v0, iterate1
+		add $t2, $t2, $t3
+		iterate1: subi $t0, $t0, 1 #decrementing the counter
+			  addi $t1, $t1, 4 #incrementing the pointer to the next item's adress
+		bgt $t0, $zero, nextIteration1  #repeat while $t0(counter) > 0
+	la $a0, result1 #pringting a prompt to display the sum 
+	li $v0, 4
+	syscall
+	move $a0, $t2
+	li $v0, 1
+	syscall
+	jr $ra
+
+#Subprogram to find and print the sum of odd and even items
+printSumOfOddAndEvenItems:
+	lw $t0, arraySize #$t0 is set to ArraySize (counter)
+	la $t1, array #$t1 points to the base address of the array
+	li $t2, 0 #$t2 holds the summation of even numbers
+	li $t3, 0 #$t3 holds the summation of odd numbers
+	li $t5, 2 #$t5 holds the value of 2
+	nextIteration3:
+		lw $t6, 0($t1) #store the current indexed item in $t6
+		div $t6, $t5 #dividing the indexed item by 2
+	        mfhi $t4 #storing the remainder in $t4
+	        beq $t4, $zero, evenCase
+	        add $t3, $t3, $t6 #the case when the item is odd, incerementing the sum of odds
+	        j iterate3
+		evenCase: #the case when the item is even 
+			add $t2, $t2, $t6 #incerementing the sum of evens
+		iterate3: 
+			subi $t0, $t0, 1 #decrementing the counter
+			addi $t1, $t1, 4 #incrementing the pointer to the next item's adress
+		bgt $t0, $zero, nextIteration3  #repeat while $t0(counter) > 0
+	la $a0, result3 #pringting a prompt to display the sum of evens
+	li $v0, 4
+	syscall
+	move $a0, $t2 #printing the sum of evens
+	li $v0, 1
+	syscall
+	la $a0, result4 #pringting a prompt to display the sum of odds
+	li $v0, 4
+	syscall
+	move $a0, $t3 #printing the sum of odds
+	li $v0, 1
+	syscall
+	jr $ra
+	
+#Subprogram to find and print the number of occurences of items divisible by a certain input number
+printNumberOfItemsDivisibleBy:
+	la $a0, prompt4 #pringting a prompt to read the input number 
+	li $v0, 4
+	syscall
+	li $v0, 5 #reading the input number that the items will be compared to
+	syscall #$v0 currently holds the input number
+	lw $t0, arraySize #$t0 is set to ArraySize (counter)
+	la $t1, array #$t1 points to the base address of the array
+	li $t2, 0 #$t2 holds the number of items divisible by $v0
+	nextIteration2:
+		lw $t3, 0($t1) #store the current indexed item in $t3
+		div $t3, $v0 #dividing the indexed item by the input number
+	        mfhi $t4 #storing the remainder in $t4
+	        bne $t4, $zero, iterate2
+	        addi $t2, $t2, 1
+		iterate2: subi $t0, $t0, 1 #decrementing the counter
+			  addi $t1, $t1, 4 #incrementing the pointer to the next item's adress
+		bgt $t0, $zero, nextIteration2  #repeat while $t0(counter) > 0
+	la $a0, result2 #pringting a prompt to display the number of occurrences
+	li $v0, 4
+	syscall
+	move $a0, $t2
+	li $v0, 1
+	syscall
+	jr $ra
+
+#Subprogram to print the options
+printOptions: #pringting the options
+	li $v0, 4
+	la $a0, prompt0 
+	syscall
+	la $a0, option1 
+	syscall
+	la $a0, option2
+	syscall
+	la $a0, option3
+	syscall
+	la $a0, option4 
+	syscall
+	jr $ra
+
+
+#The data segment
+	   .data
+array:	   .space   400 #400 / 4 = 100 words (a word is 4 bytes)
+arraySize: .word    0
+sum:       .word    0	
+intro: 	   .asciiz  "The program lets the user initialize an array and perform certain operations on it.\n"
+prompt1:   .asciiz  "Please enter the array size (must be between 1 and 100):\n"
+prompt2:   .asciiz  "Please enter the elements one by one:\n"
+prompt3:   .asciiz  "\nPlease enter the input number that the items will be compared to:\n"
+prompt4:   .asciiz  "\nPlease enter the input number that the items' divisibility will be tested with:\n"
+result1:   .asciiz  "The sum of numbers greater than your input number is:\n"
+result2:   .asciiz  "The number of items that are divisible by your input number is:\n"
+result3:   .asciiz  "\nThe sum of even items is:\n"
+result4:   .asciiz  "\nThe sum of odd items is:\n"
+error:     .asciiz  "\nInvalid character.\n"
+prompt0:   .asciiz  "\nPress:\n"
+option1:   .asciiz  "a. Find summation of numbers stored in the array which is greater than an input number.\n"
+option2:   .asciiz  "b. Find summation of even and odd numbers and display them.\n"
+option3:   .asciiz  "c. Display the number of occurrences of the array elements divisible by a certain input number.\n"
+option4:   .asciiz  "d. Quit.\n"
+
+###########################################################################################
+
+#Lab 1 - Part 5 Optional - EFE ACER
+#The program lets the user initialize an array and perform certain operations on it, it provides
+#a simple comment based menu for the operation selection.
+
+	.text
+	.globl	__start
+__start:
+	la $a0, intro #pringting an intro message 
+	li $v0, 4
+	syscall
+	#Calling the readArraySize function to determine the array's size
+	jal readArraySize
+	#Calling the readItems function to read the values of the elements
+	jal readItems
+	#The loop based menu 
+	li $t7, 'd' #$t7 holds the quit option
+	mainLoop:
+		jal printOptions
+		li $t1, 'a'
+		li $t2, 'b'
+		li $t3, 'c'
+		li $v0, 12 #reading a character    
+ 		syscall
+ 		#Different cases regarding different menu options
+ 		caseA:
+ 			bne $v0, $t1, caseB 
+ 			jal printSumOfNumsGreaterThan
+ 			j default
+ 		caseB:
+ 			bne $v0, $t2, caseC
+ 			jal printSumOfOddAndEvenItems
+ 			j default
+ 		caseC:
+ 			bne $v0, $t3, default
+ 			jal printNumberOfItemsDivisibleBy
+ 			j default
+ 		default:
+ 			bne $v0, $t7, mainLoop
+	li $v0, 10 #Stopping the execution
+	syscall
+	
+#Subprogram to read the array size
+readArraySize: 
+	la $a0, prompt1 #pringting a prompt to read arraySize
+	li $v0, 4
+	syscall
+	li $v0, 5
+	syscall
+	sw $v0, arraySize
+	move $a0, $v0
+	mul $a0, $a0, 4 #number of bytes to allocate
+	li $v0, 9 #dynamically allocating space on the heap
+	syscall #now $v0 points to the beginning of the array
+	move $s0, $v0 #base address of the array is saved in $s0
+	jr $ra #returning to the main program
+	
+#Subprogram to read arraySize number of itens to the array
+readItems:
+	la $a0, prompt2 #pringting a prompt to read items one by one
+	li $v0, 4
+	syscall
+	lw $t0, arraySize #t0 is set to ArraySize (counter)
+	move $t1, $s0 #$t1 points to the base address of the array
+	readItem: 
+		li $v0, 5 #reading an item to the current indexed position
+		syscall
+		sw $v0, 0($t1)
+		subi $t0, $t0, 1 #decrementing the counter
+		addi $t1, $t1, 4 #incrementing the pointer to the next item's adress
+		bgt $t0, $zero, readItem #repeat while $t0(counter) > 0
+	jr $ra #returning to the main program  
+
+#Subprogram to find and print the summation of items in the array that are greater than a certain number
+printSumOfNumsGreaterThan:
+	la $a0, prompt3 #pringting a prompt to read the input number 
+	li $v0, 4
+	syscall
+	li $v0, 5 #reading the input number that the items will be compared to
+	syscall #$v0 currently holds the input number
+	lw $t0, arraySize #$t0 is set to ArraySize (counter)
+	move $t1, $s0 #$t1 points to the base address of the array
+	li $t2, 0 #$t2 holds the summation
+	nextIteration1: 
+		lw $t3, 0($t1) #store the current indexed item in $t3
+		ble $t3, $v0, iterate1
+		add $t2, $t2, $t3
+		iterate1: subi $t0, $t0, 1 #decrementing the counter
+			  addi $t1, $t1, 4 #incrementing the pointer to the next item's adress
+		bgt $t0, $zero, nextIteration1  #repeat while $t0(counter) > 0
+	la $a0, result1 #pringting a prompt to display the sum 
+	li $v0, 4
+	syscall
+	move $a0, $t2
+	li $v0, 1
+	syscall
+	jr $ra
+
+#Subprogram to find and print the sum of odd and even items
+printSumOfOddAndEvenItems:
+	lw $t0, arraySize #$t0 is set to ArraySize (counter)
+	move $t1, $s0 #$t1 points to the base address of the array
+	li $t2, 0 #$t2 holds the summation of even numbers
+	li $t3, 0 #$t3 holds the summation of odd numbers
+	li $t5, 2 #$t5 holds the value of 2
+	nextIteration3:
+		lw $t6, 0($t1) #store the current indexed item in $t6
+		div $t6, $t5 #dividing the indexed item by 2
+	        mfhi $t4 #storing the remainder in $t4
+	        beq $t4, $zero, evenCase
+	        add $t3, $t3, $t6 #the case when the item is odd, incerementing the sum of odds
+	        j iterate3
+		evenCase: #the case when the item is even 
+			add $t2, $t2, $t6 #incerementing the sum of evens
+		iterate3: 
+			subi $t0, $t0, 1 #decrementing the counter
+			addi $t1, $t1, 4 #incrementing the pointer to the next item's adress
+		bgt $t0, $zero, nextIteration3  #repeat while $t0(counter) > 0
+	la $a0, result3 #pringting a prompt to display the sum of evens
+	li $v0, 4
+	syscall
+	move $a0, $t2 #printing the sum of evens
+	li $v0, 1
+	syscall
+	la $a0, result4 #pringting a prompt to display the sum of odds
+	li $v0, 4
+	syscall
+	move $a0, $t3 #printing the sum of odds
+	li $v0, 1
+	syscall
+	jr $ra
+	
+#Subprogram to find and print the number of occurences of items divisible by a certain input number
+printNumberOfItemsDivisibleBy:
+	la $a0, prompt4 #pringting a prompt to read the input number 
+	li $v0, 4
+	syscall
+	li $v0, 5 #reading the input number that the items will be compared to
+	syscall #$v0 currently holds the input number
+	lw $t0, arraySize #$t0 is set to ArraySize (counter)
+	move $t1, $s0 #$t1 points to the base address of the array
+	li $t2, 0 #$t2 holds the number of items divisible by $v0
+	nextIteration2:
+		lw $t3, 0($t1) #store the current indexed item in $t3
+		div $t3, $v0 #dividing the indexed item by the input number
+	        mfhi $t4 #storing the remainder in $t4
+	        bne $t4, $zero, iterate2
+	        addi $t2, $t2, 1
+		iterate2: subi $t0, $t0, 1 #decrementing the counter
+			  addi $t1, $t1, 4 #incrementing the pointer to the next item's adress
+		bgt $t0, $zero, nextIteration2  #repeat while $t0(counter) > 0
+	la $a0, result2 #pringting a prompt to display the number of occurrences
+	li $v0, 4
+	syscall
+	move $a0, $t2
+	li $v0, 1
+	syscall
+	jr $ra
+
+#Subprogram to print the options
+printOptions: #pringting the options
+	li $v0, 4
+	la $a0, prompt0 
+	syscall
+	la $a0, option1 
+	syscall
+	la $a0, option2
+	syscall
+	la $a0, option3
+	syscall
+	la $a0, option4 
+	syscall
+	jr $ra
+
+
+#The data segment
+	   .data
+arraySize: .word    0
+sum:       .word    0	
+intro: 	   .asciiz  "The program lets the user initialize an array and perform certain operations on it.\n"
+prompt1:   .asciiz  "Please enter the array size (must be between 1 and 100):\n"
+prompt2:   .asciiz  "Please enter the elements one by one:\n"
+prompt3:   .asciiz  "\nPlease enter the input number that the items will be compared to:\n"
+prompt4:   .asciiz  "\nPlease enter the input number that the items will be divided to:\n"
+result1:   .asciiz  "The sum of numbers greater than your input number is:\n"
+result2:   .asciiz  "The number of items that are divisible by your input number is:\n"
+result3:   .asciiz  "\nThe sum of even items is:\n"
+result4:   .asciiz  "\nThe sum of odd items is:\n"
+prompt0:   .asciiz  "\nPress:\n"
+option1:   .asciiz  "a. Find summation of numbers stored in the array which is greater than an input number.\n"
+option2:   .asciiz  "b. Find summation of even and odd numbers and display them.\n"
+option3:   .asciiz  "c. Display the number of occurrences of the array elements divisible by a certain input number.\n"
+option4:   .asciiz  "d. Quit.\n"

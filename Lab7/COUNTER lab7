@@ -1,0 +1,55 @@
+/*
+ * Lab7 - EFE ACER
+ * Question 2
+ * C code for a counter with adjustable speed and display order.
+ */
+
+char count = 0b11111111; //counter variable
+
+void main() {
+    int pace = 500; //pace is half a second as default
+    AD1PCFG = 0xFFFF;   // configure AN pins as digital I/O
+    JTAGEN_bit = 0;     // disable JTAG
+    TRISD = 0;          // initialize PORTD as output
+    TRISF = 1;
+    LATD = 0b11111111; //LEDs are initially off
+
+    while(1) {
+        PORTF = 0b11111111; //reset the buttons as unpressed
+
+        //if block to control the least significant bit using RF0 and RF1 buttons: Part 2.a
+        if (PORTFbits.RF0 == 0 && PORTFbits.RF1 == 0) { //do not display if both are pressed
+            LATD = 0b11111111;
+            count = 0b11111111;
+        } if (PORTFbits.RF0 == 0) { //least significant bit is the rightmost one
+            LATD = count;
+            count--;
+        } else if (PORTFbits.RF1 == 0) { //least significant bit is the leftmost one
+            LATD.F7 = (count | 0b11111110) != 0b11111110; //uses bit manipulation to
+            LATD.F6 = (count | 0b11111101) != 0b11111101; //reverse the order of the
+            LATD.F5 = (count | 0b11111011) != 0b11111011; //LEDs
+            LATD.F4 = (count | 0b11110111) != 0b11110111;
+            LATD.F3 = (count | 0b11101111) != 0b11101111;
+            LATD.F2 = (count | 0b11011111) != 0b11011111;
+            LATD.F1 = (count | 0b10111111) != 0b10111111;
+            LATD.F0 = (count | 0b01111111) != 0b01111111;
+            count--;
+        } else { //do not display if both are unpressed
+            LATD = 0b11111111;
+            count = 0b11111111;
+        }
+
+        //if block to control the speed of the display using RF2 and RF3 buttons: Part 2.b
+        if (PORTFbits.RF2 == 0 && PORTFbits.RF3 == 0) { //back to default pace if both are pressed
+            pace = 500;
+        } if (PORTFbits.RF2 == 0) { //set to slower pace
+            pace = 1000;
+        } else if (PORTFbits.RF3 == 0) { //set to faster pace
+            pace = 200;
+        } else { //back to default pace if both are unpressed
+            pace = 500;
+        }
+
+        VDelay_ms(pace); //set the delay as the pace
+  }
+}
